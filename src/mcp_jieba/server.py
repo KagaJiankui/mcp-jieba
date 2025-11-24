@@ -1,7 +1,8 @@
 import sys
 import traceback
 import os
-from typing import List, Union, Callable
+import threading
+from typing import List, Union, Callable, Optional
 from functools import wraps
 from mcp.server.fastmcp import FastMCP
 from mcp_jieba.engine import JiebaEngine
@@ -9,8 +10,19 @@ from mcp_jieba.engine import JiebaEngine
 # Initialize the FastMCP server
 mcp = FastMCP("jieba-rs")
 
-# Initialize JiebaEngine once globally
-_engine = JiebaEngine()
+# 使用线程安全的懒加载
+_engine: Optional[JiebaEngine] = None
+_engine_lock = threading.Lock()
+
+def get_engine() -> JiebaEngine:
+    """线程安全的懒加载 JiebaEngine，确保只初始化一次"""
+    global _engine
+    if _engine is None:
+        with _engine_lock:
+            # 双重检查，避免锁竞争后的重复初始化
+            if _engine is None:
+                _engine = JiebaEngine()
+    return _engine
 
 # Exception handling decorator
 def handle_exceptions(func: Callable) -> Callable:
@@ -49,7 +61,8 @@ def tokenize(text: Union[str, List[str]], mode: str = "exact") -> dict:
         A dictionary where keys are indices (as strings) and values are lists of tokens.
         Example: {"0": ["token1", "token2", ...], "1": [...]}
     """
-    results = _engine.process(text, mode)
+    engine = get_engine()  # 懒加载获取实例
+    results = engine.process(text, mode)
     return results
 
 @mcp.tool()
@@ -65,7 +78,8 @@ def tag(text: Union[str, List[str]]) -> dict:
         A dictionary where keys are indices (as strings) and values are lists of word-flag pairs.
         Example: {"0": [{"word1": "flag1"}, {"word2": "flag2"}, ...], "1": [...]}
     """
-    results = _engine.tag(text)
+    engine = get_engine()  # 懒加载获取实例
+    results = engine.tag(text)
     return results
 
 @mcp.tool()
@@ -83,7 +97,8 @@ def extract_keywords(text: Union[str, List[str]], top_k: int = 3) -> dict:
         A dictionary where keys are indices (as strings) and values are lists of keywords.
         Example: {"0": ["keyword1", "keyword2", "keyword3", ...], "1": [...]}
     """
-    results = _engine.extract_keywords_bm25(text, top_k)
+    engine = get_engine()  # 懒加载获取实例
+    results = engine.extract_keywords_bm25(text, top_k)
     return results
 
 def main():
