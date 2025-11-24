@@ -2,7 +2,7 @@ import sys
 import traceback
 from typing import List, Union
 from mcp.server.fastmcp import FastMCP
-from .engine import JiebaEngine
+from mcp_jieba.engine import JiebaEngine
 
 # Initialize the FastMCP server
 mcp = FastMCP("jieba-rs")
@@ -114,6 +114,47 @@ def extract_keywords(text: List[str], top_k: int = 5) -> dict:
         error_msg = f"Error Type: {type_name}\nLocation: {error_location}\nMessage: {str(e)}"
         raise RuntimeError(error_msg)
 
+def main():
+    """Main entry point for the server."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="MCP Jieba Server")
+    parser.add_argument("--transport", default="stdio",
+                        choices=["stdio", "http"],
+                        help="Transport protocol (stdio or http)")
+    parser.add_argument("--host", default="127.0.0.1",
+                        help="Host to bind to (HTTP only)")
+    parser.add_argument("--port", type=int, default=8000,
+                        help="Port to bind to (HTTP only)")
+    parser.add_argument("--log-level", default="INFO",
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                        help="Set logging level")
+
+    args = parser.parse_args()
+
+    # Configure server settings before running
+    if args.transport == "http":
+        # Create new server instance with HTTP-specific settings
+        # Use streamable-http transport with stateless mode for better compatibility
+        server = FastMCP(
+            "jieba-rs",
+            host=args.host,
+            port=args.port,
+            log_level=args.log_level,
+            stateless_http=True  # Stateless mode for maximum compatibility
+        )
+        # Re-register tools on new instance
+        server.add_tool(tokenize)
+        server.add_tool(tag)
+        server.add_tool(extract_keywords)
+        # Use streamable-http transport (mounts at /mcp by default)
+        server.run(transport="streamable-http")
+    else:
+        # Use default instance with custom log level
+        if args.log_level != "INFO":
+            import os
+            os.environ["FASTMCP_LOG_LEVEL"] = args.log_level
+        mcp.run(transport="stdio")
+
 if __name__ == "__main__":
-    # Default to STDIO mode when run directly
-    mcp.run()
+    main()

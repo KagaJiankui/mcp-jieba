@@ -1,7 +1,8 @@
 import os
+import re
 import rjieba
+import numpy as np
 from typing import List, Union, Dict, Set
-from rank_bm25 import BM25Okapi
 
 class JiebaEngine:
     _instance = None
@@ -101,101 +102,139 @@ class JiebaEngine:
             # rjieba.tag returns a list of tuples [(word, flag), ...]
             tags = rjieba.tag(content)
             # Convert to list of dicts for better JSON serialization
-            results[str(idx)] = [{"word": t[0], "flag": t[1]} for t in tags]
+            results[str(idx)] = [{t[0]: t[1]} for t in tags]
 
         return results
 
-    def extract_keywords_bm25(self, texts: List[str], top_k: int = 5) -> Dict[str, List[str]]:
+    def extract_keywords_bm25(self, texts: Union[str, List[str]], top_k: int = 5) -> Dict[str, List[str]]:
         """
-        Extract keywords from a batch of texts using BM25.
-        The batch itself is treated as the corpus.
+        Extract keywords from text(s) using BM25-adpt (Numpy implementation).
+        Each input string is treated as a corpus (split into sentences).
 
         Args:
-            texts: A list of strings (documents).
+            texts: A single string or a list of strings.
             top_k: Number of keywords to extract per document.
 
         Returns:
             A dictionary where keys are indices (as strings) and values are lists of keywords.
+            Even for a single string input, returns {'0': [...]}.
         """
-        if not texts:
-            return {}
-
-        # 1. Tokenize all documents
-        tokenized_corpus = []
-        valid_indices = [] # Keep track of indices that are actually strings
-
-        for idx, text in enumerate(texts):
-            if not isinstance(text, str):
-                continue
-
-            # Use exact mode for tokenization
-            raw_tokens = rjieba.cut(text)
-            # Filter stopwords and punctuation
-            tokens = [t for t in raw_tokens if self._is_valid_token(t)]
-            tokenized_corpus.append(tokens)
-            valid_indices.append(idx)
-
-        if not tokenized_corpus:
-            return {}
-
-        # 2. Initialize BM25
-        bm25 = BM25Okapi(tokenized_corpus)
+        # Normalize input to list
+        is_single_input = isinstance(texts, str)
+        inputs = [texts] if is_single_input else texts
 
         results = {}
 
-        # 3. For each document, find the top_k words with highest BM25 scores
-        # Note: BM25 is usually query-based (score(doc, query)).
-        # To use it for keyword extraction (score(word, doc)), we can consider:
-        # The "relevance" of a word to the document in the context of the corpus.
-        # A common approximation is to use the IDF of the word * TF in the document.
-        # BM25Okapi formula components can be accessed.
-        # However, rank_bm25 library is designed for retrieval.
-        # We can hack it: for a doc, iterate over its unique words, treat each word as a single-term query,
-        # and get the score for the document itself.
-
-        # Optimization: Calculate scores for all unique tokens in the doc
-        for i, doc_tokens in enumerate(tokenized_corpus):
-            original_idx = str(valid_indices[i])
-            if not doc_tokens:
-                results[original_idx] = []
+        for idx, text in enumerate(inputs):
+            if not isinstance(text, str) or not text.strip():
+                results[str(idx)] = []
                 continue
 
-            unique_tokens = list(set(doc_tokens))
-            scores = []
+            # 1. Split into sentences to form the corpus
+            # Simple split by common Chinese/English sentence terminators
+            sentences = re.split(r'[。！？!?\n;；]+', text)
+            sentences = [s.strip() for s in sentences if s.strip()]
 
-            for token in unique_tokens:
-                # get_scores returns scores for all docs for a given query.
-                # We only care about the score for the current document (index i).
-                # This is inefficient O(N^2) if we do it naively for all docs.
-                # But rank_bm25 doesn't expose "score(doc, term)" directly efficiently for single doc.
-                # Actually, bm25.idf[token] gives IDF.
-                # We can manually compute a simplified BM25-like score or just use IDF * TF.
-                # Let's try to use the library's get_scores for correctness, even if slightly slow for large batches.
-                # query = [token]
-                # doc_scores = bm25.get_scores(query)
-                # score = doc_scores[i]
+            if not sentences:
+                results[str(idx)] = []
+                continue
 
-                # Faster approach using internal structures if possible, but let's stick to public API for stability.
-                # Or better: just use the IDF component from BM25 as the "weight" and multiply by TF.
-                # This is essentially TF-IDF but using BM25's IDF definition.
-                # rank_bm25 stores idf in `bm25.idf` (dict).
+            # 2. Tokenize sentences
+            vocab = {}
+            next_id = 0
 
-                tf = doc_tokens.count(token)
-                # BM25 IDF is often negative for very common terms in some implementations, but rank_bm25 uses standard log.
-                # Let's check if token is in idf
-                idf = 0.0
-                if token in bm25.idf:
-                    idf = bm25.idf[token]
+            # We need to map tokens to indices for numpy
+            docs_tokens_ids = []
 
-                # Simple TF-IDF using BM25's IDF
-                score = tf * idf
-                scores.append((token, score))
+            for sent in sentences:
+                raw_tokens = rjieba.cut(sent)
+                tokens = [t for t in raw_tokens if self._is_valid_token(t)]
+                if not tokens:
+                    continue
 
-            # Sort by score desc
-            scores.sort(key=lambda x: x[1], reverse=True)
+                token_ids = []
+                for t in tokens:
+                    if t not in vocab:
+                        vocab[t] = next_id
+                        next_id += 1
+                    token_ids.append(vocab[t])
 
-            # Take top k
-            top_keywords = [w for w, s in scores[:top_k]]
-            results[original_idx] = top_keywords
+                docs_tokens_ids.append(token_ids)
+
+            if not docs_tokens_ids:
+                results[str(idx)] = []
+                continue
+
+            # 3. Build Numpy Matrices
+            N = len(docs_tokens_ids)
+            V = len(vocab)
+
+            # TF Matrix
+            tf_matrix = np.zeros((N, V), dtype=np.float32)
+            for i, doc_ids in enumerate(docs_tokens_ids):
+                for tid in doc_ids:
+                    tf_matrix[i, tid] += 1
+
+            # 4. Compute BM25 Components
+            # k1 = 1.5, b = 0.75 (standard defaults)
+            k1 = 1.5
+            b = 0.75
+
+            # Document Frequencies (number of docs containing term)
+            df = np.count_nonzero(tf_matrix, axis=0)
+
+            # IDF
+            # standard BM25 IDF: log((N - df + 0.5) / (df + 0.5) + 1)
+            idf = np.log((N - df + 0.5) / (df + 0.5) + 1)
+
+            # Document Lengths
+            doc_lens = tf_matrix.sum(axis=1)
+            avgdl = doc_lens.mean() if N > 0 else 0
+
+            if avgdl == 0:
+                results[str(idx)] = []
+                continue
+
+            # BM25 Scores
+            # score = idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * dl / avgdl))
+
+            # Reshape for broadcasting
+            # tf_matrix: (N, V)
+            # idf: (V,) -> broadcast to (N, V)
+            # doc_lens: (N,) -> broadcast to (N, 1)
+
+            numerator = tf_matrix * (k1 + 1)
+
+            # Denominator term: k1 * (1 - b + b * doc_lens[:, None] / avgdl)
+            # Shape (N, 1)
+            denom_term = k1 * (1 - b + b * doc_lens[:, None] / avgdl)
+
+            denominator = tf_matrix + denom_term
+
+            # Avoid division by zero (shouldn't happen as denom_term > 0 usually, but safe check)
+            # scores_matrix (N, V)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                scores_matrix = idf * (numerator / denominator)
+                scores_matrix = np.nan_to_num(scores_matrix)
+
+            # 5. Aggregate scores for the whole text
+            # Sum scores across all sentences for each word
+            word_scores = scores_matrix.sum(axis=0)
+
+            # 6. Get Top-K
+            # Get indices of top-k scores
+            if V <= top_k:
+                top_indices = np.argsort(word_scores)[::-1]
+            else:
+                # argpartition is faster for large V
+                top_indices = np.argpartition(word_scores, -top_k)[-top_k:]
+                # Sort the top k
+                top_indices = top_indices[np.argsort(word_scores[top_indices])[::-1]]
+
+            # Map back to words
+            inv_vocab = {v: k for k, v in vocab.items()}
+            top_keywords = [inv_vocab[i] for i in top_indices]
+
+            results[str(idx)] = top_keywords
 
         return results

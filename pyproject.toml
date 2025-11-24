@@ -9,7 +9,8 @@ dependencies = [
     "rjieba>=0.1.11",
     "fastapi>=0.100.0",
     "uvicorn>=0.20.0",
-    "rank-bm25>=0.2.2"
+    "rank-bm25>=0.2.2",
+    "numpy>=1.24.0"
 ]
 
 [project.scripts]
