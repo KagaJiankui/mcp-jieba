@@ -4,6 +4,7 @@ import rjieba
 import numpy as np
 from typing import List, Union, Dict, Set
 
+
 class JiebaEngine:
     _instance = None
     _stopwords: Set[str] = set()
@@ -23,9 +24,11 @@ class JiebaEngine:
         """Load stopwords from the package resource."""
         try:
             # Try to load from the package resources
-            resource_path = os.path.join(os.path.dirname(__file__), 'resources', 'stopwords.txt')
+            resource_path = os.path.join(
+                os.path.dirname(__file__), "resources", "stopwords.txt"
+            )
             if os.path.exists(resource_path):
-                with open(resource_path, 'r', encoding='utf-8') as f:
+                with open(resource_path, "r", encoding="utf-8") as f:
                     self._stopwords = set(line.strip() for line in f if line.strip())
             else:
                 # Fallback or empty if not found (should not happen with correct install)
@@ -48,7 +51,9 @@ class JiebaEngine:
         # or we can add a simple check.
         return True
 
-    def process(self, text: Union[str, List[str]], mode: str = "exact") -> Dict[str, List[str]]:
+    def process(
+        self, text: Union[str, List[str]], mode: str = "exact"
+    ) -> Dict[str, List[str]]:
         """
         Process text(s) with jieba segmentation.
 
@@ -106,7 +111,9 @@ class JiebaEngine:
 
         return results
 
-    def extract_keywords_bm25(self, texts: Union[str, List[str]], top_k: int = 5) -> Dict[str, List[str]]:
+    def extract_keywords_bm25(
+        self, texts: Union[str, List[str]], top_k: int = 5
+    ) -> Dict[str, List[str]]:
         """
         Extract keywords from text(s) using BM25-adpt (Numpy implementation).
         Each input string is treated as a corpus (split into sentences).
@@ -132,7 +139,7 @@ class JiebaEngine:
 
             # 1. Split into sentences to form the corpus
             # Simple split by common Chinese/English sentence terminators
-            sentences = re.split(r'[。！？!?\n;；]+', text)
+            sentences = re.split(r"[。！？!?\n;；]+", text)
             sentences = [s.strip() for s in sentences if s.strip()]
 
             if not sentences:
@@ -213,7 +220,7 @@ class JiebaEngine:
 
             # Avoid division by zero (shouldn't happen as denom_term > 0 usually, but safe check)
             # scores_matrix (N, V)
-            with np.errstate(divide='ignore', invalid='ignore'):
+            with np.errstate(divide="ignore", invalid="ignore"):
                 scores_matrix = idf * (numerator / denominator)
                 scores_matrix = np.nan_to_num(scores_matrix)
 

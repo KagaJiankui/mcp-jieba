@@ -1,136 +1,128 @@
 import sys
 import traceback
-from typing import List, Union
+import os
+from typing import List, Union, Callable
+from functools import wraps
 from mcp.server.fastmcp import FastMCP
 from mcp_jieba.engine import JiebaEngine
 
 # Initialize the FastMCP server
 mcp = FastMCP("jieba-rs")
 
+# Initialize JiebaEngine once globally
+_engine = JiebaEngine()
+
+# Exception handling decorator
+def handle_exceptions(func: Callable) -> Callable:
+    """Decorator to handle exceptions uniformly across all tools."""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            tb = traceback.extract_tb(exc_traceback)
+            if tb:
+                last_frame = tb[-1]
+                filename = last_frame.filename
+                lineno = last_frame.lineno
+                funcname = last_frame.name
+                error_location = f"File '{filename}', line {lineno}, in {funcname}"
+            else:
+                error_location = "Unknown location"
+            type_name = exc_type.__name__ if exc_type else "UnknownError"
+            error_msg = f"Error Type: {type_name}\nLocation: {error_location}\nMessage: {str(e)}"
+            raise RuntimeError(error_msg)
+    return wrapper
+
 @mcp.tool()
+@handle_exceptions
 def tokenize(text: Union[str, List[str]], mode: str = "exact") -> dict:
     """
-    Tokenize text using jieba-rs.
+    Tokenize text(s) with jieba segmentation (exact or search mode).
 
     Args:
-        text: The text to tokenize. Can be a single string or a list of strings.
-        mode: The tokenization mode. "exact" (default) or "search".
+        text: `Union[str, List[str]]` A single string or a list of strings to tokenize.
+        mode:  `str` Tokenization mode - "exact" for precise segmentation (default) or "search" for search engine mode.
 
     Returns:
-        A JSON object representing the tokenization results.
-        Format: {"0": ["token1", "token2"], "1": [...]}
+        A dictionary where keys are indices (as strings) and values are lists of tokens.
+        Example: {"0": ["token1", "token2", ...], "1": [...]}
     """
-    try:
-        engine = JiebaEngine()
-        results = engine.process(text, mode)
-        return results
-    except Exception as e:
-        # Capture the exception and format the error
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-
-        # Get the stack trace
-        tb = traceback.extract_tb(exc_traceback)
-
-        # Find the "bottom" of the stack (the actual error location)
-        if tb:
-            last_frame = tb[-1]
-            filename = last_frame.filename
-            lineno = last_frame.lineno
-            funcname = last_frame.name
-            error_location = f"File '{filename}', line {lineno}, in {funcname}"
-        else:
-            error_location = "Unknown location"
-
-        type_name = exc_type.__name__ if exc_type else "UnknownError"
-        error_msg = f"Error Type: {type_name}\nLocation: {error_location}\nMessage: {str(e)}"
-
-        raise RuntimeError(error_msg)
+    results = _engine.process(text, mode)
+    return results
 
 @mcp.tool()
+@handle_exceptions
 def tag(text: Union[str, List[str]]) -> dict:
     """
-    Perform POS tagging on text using jieba-rs.
+    Perform POS tagging on text(s) with jieba.
 
     Args:
-        text: The text to tag. Can be a single string or a list of strings.
+        text: `Union[str, List[str]]` A single string or a list of strings to tag.
 
     Returns:
-        A JSON object representing the tagging results.
-        Format: {"0": [{"word": "word", "flag": "pos"}], "1": [...]}
+        A dictionary where keys are indices (as strings) and values are lists of word-flag pairs.
+        Example: {"0": [{"word1": "flag1"}, {"word2": "flag2"}, ...], "1": [...]}
     """
-    try:
-        engine = JiebaEngine()
-        results = engine.tag(text)
-        return results
-    except Exception as e:
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-        tb = traceback.extract_tb(exc_traceback)
-        if tb:
-            last_frame = tb[-1]
-            filename = last_frame.filename
-            lineno = last_frame.lineno
-            funcname = last_frame.name
-            error_location = f"File '{filename}', line {lineno}, in {funcname}"
-        else:
-            error_location = "Unknown location"
-        type_name = exc_type.__name__ if exc_type else "UnknownError"
-        error_msg = f"Error Type: {type_name}\nLocation: {error_location}\nMessage: {str(e)}"
-        raise RuntimeError(error_msg)
+    results = _engine.tag(text)
+    return results
 
 @mcp.tool()
-def extract_keywords(text: List[str], top_k: int = 5) -> dict:
+@handle_exceptions
+def extract_keywords(text: Union[str, List[str]], top_k: int = 3) -> dict:
     """
-    Extract keywords from a batch of texts using BM25 algorithm.
-    The input batch is treated as the corpus for IDF calculation.
+    Extract keywords from text(s) using BM25-adpt algorithm with numpy.
+    Each input string is treated as an independent corpus, split into sentences for analysis.
 
     Args:
-        text: A list of strings (documents).
-        top_k: Number of keywords to extract per document (default 5).
+        text: `Union[str, List[str]]` A single string or a list of strings to extract keywords from.
+        top_k:  `int` Number of top keywords to extract per document (default 3).
 
     Returns:
-        A JSON object representing the keywords.
-        Format: {"0": ["keyword1", "keyword2"], "1": [...]}
+        A dictionary where keys are indices (as strings) and values are lists of keywords.
+        Example: {"0": ["keyword1", "keyword2", "keyword3", ...], "1": [...]}
     """
-    try:
-        engine = JiebaEngine()
-        # Ensure input is a list for corpus processing
-        if isinstance(text, str):
-            text = [text]
-
-        results = engine.extract_keywords_bm25(text, top_k)
-        return results
-    except Exception as e:
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-        tb = traceback.extract_tb(exc_traceback)
-        if tb:
-            last_frame = tb[-1]
-            filename = last_frame.filename
-            lineno = last_frame.lineno
-            funcname = last_frame.name
-            error_location = f"File '{filename}', line {lineno}, in {funcname}"
-        else:
-            error_location = "Unknown location"
-        type_name = exc_type.__name__ if exc_type else "UnknownError"
-        error_msg = f"Error Type: {type_name}\nLocation: {error_location}\nMessage: {str(e)}"
-        raise RuntimeError(error_msg)
+    results = _engine.extract_keywords_bm25(text, top_k)
+    return results
 
 def main():
     """Main entry point for the server."""
     import argparse
 
     parser = argparse.ArgumentParser(description="MCP Jieba Server")
-    parser.add_argument("--transport", default="stdio",
+    parser.add_argument("--transport", default="http",
                         choices=["stdio", "http"],
                         help="Transport protocol (stdio or http)")
-    parser.add_argument("--host", default="127.0.0.1",
+    parser.add_argument("--host", default=None,
                         help="Host to bind to (HTTP only)")
-    parser.add_argument("--port", type=int, default=8000,
+    parser.add_argument("--port", type=int, default=None,
                         help="Port to bind to (HTTP only)")
-    parser.add_argument("--log-level", default="INFO",
+    parser.add_argument("--log-level", default="CRITICAL",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                         help="Set logging level")
 
     args = parser.parse_args()
+
+    # Check for environment variable configuration
+    bind_env = os.environ.get("MCP_JIEBA_BIND")
+    if bind_env:
+        try:
+            env_host, env_port = bind_env.rsplit(":", 1)
+            env_port = int(env_port)
+            # Environment variables override defaults but not command line args
+            if args.host is None:
+                args.host = env_host
+            if args.port is None:
+                args.port = env_port
+        except ValueError:
+            print(f"Warning: Invalid MCP_JIEBA_BIND format: {bind_env}. Expected format: host:port")
+
+    # Set defaults if not provided by args or env
+    if args.host is None:
+        args.host = "127.0.0.1"
+    if args.port is None:
+        args.port = 8000
 
     # Configure server settings before running
     if args.transport == "http":
@@ -152,7 +144,6 @@ def main():
     else:
         # Use default instance with custom log level
         if args.log_level != "INFO":
-            import os
             os.environ["FASTMCP_LOG_LEVEL"] = args.log_level
         mcp.run(transport="stdio")
 
