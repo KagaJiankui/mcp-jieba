@@ -1,0 +1,27 @@
+### Python workspace minimal gitignore
+# Virtual environments (standard + uv-managed)
+venv/
+.venv/
+uv/
+uv_env/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.eggs/
+.mypy_cache/
+.pytest_cache/
+
+# Environment files
+.env
+.env.*
+.envrc
+
+# VSCode workflow files
+.vscode/
+
+# Build artifacts
+dist/
+build/
+.github/chatmodes/*
