@@ -1,8 +1,7 @@
 import os
-import tempfile
 import rjieba
-from typing import List, Union, Dict, Any, Set, Optional
-import importlib.resources
+from typing import List, Union, Dict, Set
+from rank_bm25 import BM25Okapi
 
 class JiebaEngine:
     _instance = None
@@ -23,7 +22,6 @@ class JiebaEngine:
         """Load stopwords from the package resource."""
         try:
             # Try to load from the package resources
-            from . import resources
             resource_path = os.path.join(os.path.dirname(__file__), 'resources', 'stopwords.txt')
             if os.path.exists(resource_path):
                 with open(resource_path, 'r', encoding='utf-8') as f:
@@ -49,22 +47,17 @@ class JiebaEngine:
         # or we can add a simple check.
         return True
 
-    def process(self, text: Union[str, List[str]], mode: str = "exact", user_dict: Optional[List[str]] = None) -> Dict[str, List[str]]:
+    def process(self, text: Union[str, List[str]], mode: str = "exact") -> Dict[str, List[str]]:
         """
         Process text(s) with jieba segmentation.
 
         Args:
             text: A single string or a list of strings.
             mode: "exact" or "search".
-            user_dict: Optional list of terms to add to the dictionary.
 
         Returns:
             A dictionary where keys are indices (as strings) and values are lists of tokens.
         """
-        # Load user dictionary if provided
-        if user_dict:
-            self._load_user_dict(user_dict)
-
         # Normalize input to list
         inputs = [text] if isinstance(text, str) else text
         results = {}
@@ -74,7 +67,6 @@ class JiebaEngine:
                 results[str(idx)] = []
                 continue
 
-            tokens = []
             if mode == "search":
                 # cut_for_search returns an iterator or list depending on implementation
                 raw_tokens = rjieba.cut_for_search(content)
@@ -88,35 +80,122 @@ class JiebaEngine:
 
         return results
 
-    def _load_user_dict(self, user_dict: List[str]):
+    def tag(self, text: Union[str, List[str]]) -> Dict[str, List[Dict[str, str]]]:
         """
-        Load a user dictionary.
-        Since rjieba might expect a file, we write to a temp file.
+        Process text(s) with jieba POS tagging.
+
+        Args:
+            text: A single string or a list of strings.
+
+        Returns:
+            A dictionary where keys are indices (as strings) and values are lists of {"word": word, "flag": flag}.
         """
-        if not user_dict:
-            return
+        inputs = [text] if isinstance(text, str) else text
+        results = {}
 
-        try:
-            # Create a temporary file
-            # rjieba/jieba format: word freq tag (freq and tag are optional)
-            # We just write the word
-            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False) as tmp:
-                for word in user_dict:
-                    tmp.write(f"{word}\n")
-                tmp_path = tmp.name
+        for idx, content in enumerate(inputs):
+            if not isinstance(content, str):
+                results[str(idx)] = []
+                continue
 
-            # Load into rjieba
-            # Note: rjieba.load_userdict might not be available or might work differently.
-            # If rjieba is strictly a binding to jieba-rs, we need to check its exposed API.
-            # Assuming it mimics jieba's API for now.
-            if hasattr(rjieba, 'load_userdict'):
-                rjieba.load_userdict(tmp_path)
+            # rjieba.tag returns a list of tuples [(word, flag), ...]
+            tags = rjieba.tag(content)
+            # Convert to list of dicts for better JSON serialization
+            results[str(idx)] = [{"word": t[0], "flag": t[1]} for t in tags]
 
-            # Clean up
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
-        except Exception as e:
-            # Log warning but don't crash
-            print(f"Warning: Failed to load user dictionary: {e}")
+        return results
+
+    def extract_keywords_bm25(self, texts: List[str], top_k: int = 5) -> Dict[str, List[str]]:
+        """
+        Extract keywords from a batch of texts using BM25.
+        The batch itself is treated as the corpus.
+
+        Args:
+            texts: A list of strings (documents).
+            top_k: Number of keywords to extract per document.
+
+        Returns:
+            A dictionary where keys are indices (as strings) and values are lists of keywords.
+        """
+        if not texts:
+            return {}
+
+        # 1. Tokenize all documents
+        tokenized_corpus = []
+        valid_indices = [] # Keep track of indices that are actually strings
+
+        for idx, text in enumerate(texts):
+            if not isinstance(text, str):
+                continue
+
+            # Use exact mode for tokenization
+            raw_tokens = rjieba.cut(text)
+            # Filter stopwords and punctuation
+            tokens = [t for t in raw_tokens if self._is_valid_token(t)]
+            tokenized_corpus.append(tokens)
+            valid_indices.append(idx)
+
+        if not tokenized_corpus:
+            return {}
+
+        # 2. Initialize BM25
+        bm25 = BM25Okapi(tokenized_corpus)
+
+        results = {}
+
+        # 3. For each document, find the top_k words with highest BM25 scores
+        # Note: BM25 is usually query-based (score(doc, query)).
+        # To use it for keyword extraction (score(word, doc)), we can consider:
+        # The "relevance" of a word to the document in the context of the corpus.
+        # A common approximation is to use the IDF of the word * TF in the document.
+        # BM25Okapi formula components can be accessed.
+        # However, rank_bm25 library is designed for retrieval.
+        # We can hack it: for a doc, iterate over its unique words, treat each word as a single-term query,
+        # and get the score for the document itself.
+
+        # Optimization: Calculate scores for all unique tokens in the doc
+        for i, doc_tokens in enumerate(tokenized_corpus):
+            original_idx = str(valid_indices[i])
+            if not doc_tokens:
+                results[original_idx] = []
+                continue
+
+            unique_tokens = list(set(doc_tokens))
+            scores = []
+
+            for token in unique_tokens:
+                # get_scores returns scores for all docs for a given query.
+                # We only care about the score for the current document (index i).
+                # This is inefficient O(N^2) if we do it naively for all docs.
+                # But rank_bm25 doesn't expose "score(doc, term)" directly efficiently for single doc.
+                # Actually, bm25.idf[token] gives IDF.
+                # We can manually compute a simplified BM25-like score or just use IDF * TF.
+                # Let's try to use the library's get_scores for correctness, even if slightly slow for large batches.
+                # query = [token]
+                # doc_scores = bm25.get_scores(query)
+                # score = doc_scores[i]
+
+                # Faster approach using internal structures if possible, but let's stick to public API for stability.
+                # Or better: just use the IDF component from BM25 as the "weight" and multiply by TF.
+                # This is essentially TF-IDF but using BM25's IDF definition.
+                # rank_bm25 stores idf in `bm25.idf` (dict).
+
+                tf = doc_tokens.count(token)
+                # BM25 IDF is often negative for very common terms in some implementations, but rank_bm25 uses standard log.
+                # Let's check if token is in idf
+                idf = 0.0
+                if token in bm25.idf:
+                    idf = bm25.idf[token]
+
+                # Simple TF-IDF using BM25's IDF
+                score = tf * idf
+                scores.append((token, score))
+
+            # Sort by score desc
+            scores.sort(key=lambda x: x[1], reverse=True)
+
+            # Take top k
+            top_keywords = [w for w, s in scores[:top_k]]
+            results[original_idx] = top_keywords
+
+        return results

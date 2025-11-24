@@ -25,3 +25,6 @@ __pycache__/
 dist/
 build/
 .github/chatmodes/*
+src/mcp_jieba/resources/哈工大停用词表.txt
+src/mcp_jieba/resources/四川大学机器智能实验室停用词库.txt
+src/mcp_jieba/resources/中文停用词库.txt
