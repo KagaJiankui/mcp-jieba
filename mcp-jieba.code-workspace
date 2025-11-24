@@ -4,5 +4,7 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"python.defaultInterpreterPath": "d:\\mcp-servers\\mcp-jieba\\.venv\\Scripts\\python.exe"
+	}
 }
