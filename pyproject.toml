@@ -3,7 +3,7 @@ name = "mcp-jieba"
 
 authors = [{ name = "Tsukiyomi Shiori", email = "falkensakurai@outlook.com" }]
 
-version = "0.1.0"
+version = "0.1.1"
 classifiers = [
     'Natural Language :: Chinese (Simplified)',
     'Natural Language :: Chinese (Traditional)',
