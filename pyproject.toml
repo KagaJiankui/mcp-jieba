@@ -21,3 +21,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mcp_jieba"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/mcp_jieba",
+    "/README.md",
+    "/pyproject.toml",
+]
