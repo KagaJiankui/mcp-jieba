@@ -119,3 +119,12 @@ bunx @modelcontextprotocol/inspector python -m mcp_jieba.server
 
 - 输入: `text=["我爱北京天安门"], top_k=2`
 - 输出: `{"0": ["天安门", "北京"]}`
+
+------------------
+
+## 鸣谢
+
+- @messense/jieba-rs
+- @messense/rjieba-py
+- BM25-ADPT <https://doi.org/10.1145/2063576.2063871>
+- GitHub Copilot

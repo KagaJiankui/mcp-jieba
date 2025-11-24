@@ -1,7 +1,27 @@
 [project]
 name = "mcp-jieba"
+
+authors = [{ name = "Tsukiyomi Shiori", email = "falkensakurai@outlook.com" }]
+
 version = "0.1.0"
+classifiers = [
+    'Natural Language :: Chinese (Simplified)',
+    'Natural Language :: Chinese (Traditional)',
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Model Context Protocol :: Implementation",
+    "Model Context Protocol :: Server",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
 description = "A Model Context Protocol server for Chinese word segmentation using rjieba"
+keywords = ["Chinese", "NLP", "Analysis", "Tokenizer", "Jieba", "MCP", "Model Context Protocol"]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -11,6 +31,12 @@ dependencies = [
     "uvicorn>=0.20.0",
     "numpy>=1.24.0",
 ]
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+
+[project.urls]
+Homepage = "https://github.com/KagaJiankui/mcp-jieba"
+Issues = "https://github.com/KagaJiankui/mcp-jieba/issues"
 
 [project.scripts]
 mcp-jieba = "mcp_jieba.server:mcp.run"
@@ -23,8 +49,4 @@ build-backend = "hatchling.build"
 packages = ["src/mcp_jieba"]
 
 [tool.hatch.build.targets.sdist]
-include = [
-    "/src/mcp_jieba",
-    "/README.md",
-    "/pyproject.toml",
-]
+include = ["/src/mcp_jieba", "/README.md", "/pyproject.toml"]
