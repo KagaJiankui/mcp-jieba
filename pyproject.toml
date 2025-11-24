@@ -37,7 +37,7 @@ Homepage = "https://github.com/KagaJiankui/mcp-jieba"
 Issues = "https://github.com/KagaJiankui/mcp-jieba/issues"
 
 [project.scripts]
-mcp-jieba = "mcp_jieba.server:mcp.run"
+mcp-jieba = "mcp_jieba.server:main"
 
 [build-system]
 requires = ["hatchling"]

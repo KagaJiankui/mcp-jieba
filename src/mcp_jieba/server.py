@@ -1,6 +1,5 @@
 import sys
 import traceback
-import os
 import threading
 from typing import List, Union, Callable, Optional
 from functools import wraps
@@ -8,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp_jieba.engine import JiebaEngine
 
 # Initialize the FastMCP server
-mcp = FastMCP("jieba-rs")
+mcp = FastMCP("mcp-jieba", dependencies=["rjieba", "numpy","mcp_jieba","threading","mcp"])
 
 # 使用线程安全的懒加载
 _engine: Optional[JiebaEngine] = None
@@ -114,57 +113,39 @@ def main():
     parser.add_argument("--transport", default="http",
                         choices=["stdio", "http"],
                         help="Transport protocol (stdio or http)")
-    parser.add_argument("--host", default=None,
+    parser.add_argument("--host", default="0.0.0.0",
                         help="Host to bind to (HTTP only)")
-    parser.add_argument("--port", type=int, default=None,
+    parser.add_argument("--port", type=int, default=3001,
                         help="Port to bind to (HTTP only)")
-    parser.add_argument("--log-level", default="CRITICAL",
-                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-                        help="Set logging level")
-
     args = parser.parse_args()
 
-    # Check for environment variable configuration
-    bind_env = os.environ.get("MCP_JIEBA_BIND")
-    if bind_env:
+    # 从环境变量 BIND_ADDR 获取 host 和 port（格式为 host:port）
+    import os
+    bind_addr = os.environ.get("BIND_ADDR")
+    if bind_addr:
         try:
-            env_host, env_port = bind_env.rsplit(":", 1)
-            env_port = int(env_port)
-            # Environment variables override defaults but not command line args
-            if args.host is None:
-                args.host = env_host
-            if args.port is None:
-                args.port = env_port
+            host, port = bind_addr.split(":")
+            args.host = host
+            args.port = int(port)
         except ValueError:
-            print(f"Warning: Invalid MCP_JIEBA_BIND format: {bind_env}. Expected format: host:port")
+            print("Invalid BIND_ADDR format. Expected 'host:port'", file=sys.stderr)
+            sys.exit(1)
 
-    # Set defaults if not provided by args or env
-    if args.host is None:
-        args.host = "127.0.0.1"
-    if args.port is None:
-        args.port = 8000
-
-    # Configure server settings before running
     if args.transport == "http":
-        # Create new server instance with HTTP-specific settings
-        # Use streamable-http transport with stateless mode for better compatibility
-        server = FastMCP(
-            "jieba-rs",
-            host=args.host,
-            port=args.port,
-            log_level=args.log_level,
-            stateless_http=True  # Stateless mode for maximum compatibility
-        )
-        # Re-register tools on new instance
+        # HTTP 模式：使用 SSE 传输协议 (MCP 标准 HTTP 实现)
+        # 创建新实例以应用 host/port 配置
+        server = FastMCP("mcp-jieba", host=args.host, port=args.port)
+
+        # 重新注册工具
         server.add_tool(tokenize)
         server.add_tool(tag)
         server.add_tool(extract_keywords)
-        # Use streamable-http transport (mounts at /mcp by default)
-        server.run(transport="streamable-http")
+
+        print(f"Starting MCP Jieba server over HTTP at {args.host}:{args.port}...", file=sys.stderr)
+        server.run(transport="streamable-http", mount_path="/mcp")
     else:
-        # Use default instance with custom log level
-        if args.log_level != "INFO":
-            os.environ["FASTMCP_LOG_LEVEL"] = args.log_level
+        # STDIO 模式
+        print("Starting MCP Jieba server over STDIO...", file=sys.stderr)
         mcp.run(transport="stdio")
 
 if __name__ == "__main__":
