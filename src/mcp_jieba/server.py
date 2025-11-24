@@ -54,7 +54,7 @@ def tokenize(text: Union[str, List[str]], mode: str = "exact") -> dict:
     Tokenize text(s) with jieba segmentation (exact or search mode).
 
     Args:
-        text: `Union[str, List[str]]` A single string or a list of strings to tokenize.
+        text: `Union[str, List[str]]` A single string or a list of strings `["str1", "str2", ...]` to tokenize.
         mode:  `str` Tokenization mode - "exact" for precise segmentation (default) or "search" for search engine mode.
 
     Returns:
@@ -72,11 +72,16 @@ def tag(text: Union[str, List[str]]) -> dict:
     Perform POS tagging on text(s) with jieba.
 
     Args:
-        text: `Union[str, List[str]]` A single string or a list of strings to tag.
+        text: `Union[str, List[str]]` A single string or a list of strings `["str1", "str2", ...]` to tag.
 
     Returns:
         A dictionary where keys are indices (as strings) and values are lists of word-flag pairs.
         Example: {"0": [{"word1": "flag1"}, {"word2": "flag2"}, ...], "1": [...]}
+
+        The flags follow ICTCLAS POS tagging conventions:
+        ```json
+        {"a": "形容词", "b": "区别词", "c": "连词", "d": "副词", "e": "叹词", "g": "语素字", "h": "前接成分", "i": "习用语", "j": "简称", "k": "后接成分", "m": "数词", "n": "普通名词", "nd": "方位名词", "nh": "人名", "ni": "机构名", "nl": "处所名词", "ns": "地名", "nt": "时间词", "nz": "其他专名", "o": "拟声词", "p": "介词", "q": "量词", "r": "代词", "u": "助词", "v": "动词", "wp": "标点符号", "ws": "字符串", "x": "非语素字", "y": "语气词", "z": "状态词"}
+        ```
     """
     engine = get_engine()  # 懒加载获取实例
     results = engine.tag(text)
@@ -90,7 +95,7 @@ def extract_keywords(text: Union[str, List[str]], top_k: int = 3) -> dict:
     Each input string is treated as an independent corpus, split into sentences for analysis.
 
     Args:
-        text: `Union[str, List[str]]` A single string or a list of strings to extract keywords from.
+        text: `Union[str, List[str]]` A single string or a list of strings `["str1", "str2", ...]` to extract keywords from.
         top_k:  `int` Number of top keywords to extract per document (default 3).
 
     Returns:
