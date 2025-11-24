@@ -58,7 +58,7 @@ def tokenize(text: Union[str, List[str]], mode: str = "exact") -> dict:
 
     Returns:
         A dictionary where keys are indices (as strings) and values are lists of tokens.
-        Example: {"0": ["token1", "token2", ...], "1": [...]}
+        Example: {0: ["token1", "token2", ...], 1: [...]}
     """
     engine = get_engine()  # 懒加载获取实例
     results = engine.process(text, mode)
@@ -74,8 +74,8 @@ def tag(text: Union[str, List[str]]) -> dict:
         text: `Union[str, List[str]]` A single string or a list of strings `["str1", "str2", ...]` to tag.
 
     Returns:
-        A dictionary where keys are indices (as strings) and values are lists of word-flag pairs.
-        Example: {"0": [{"word1": "flag1"}, {"word2": "flag2"}, ...], "1": [...]}
+        A dictionary where keys are indices (as strings) and values are dicts of word-flag pairs.
+        Example: {0: {"word1": "flag1", "word2": "flag2", ...}, 1: {...}}
 
         The flags follow ICTCLAS POS tagging conventions:
         ```json
@@ -99,7 +99,7 @@ def extract_keywords(text: Union[str, List[str]], top_k: int = 3) -> dict:
 
     Returns:
         A dictionary where keys are indices (as strings) and values are lists of keywords.
-        Example: {"0": ["keyword1", "keyword2", "keyword3", ...], "1": [...]}
+        Example: {0: ["keyword1", "keyword2", "keyword3", ...], 1: [...]}
     """
     engine = get_engine()  # 懒加载获取实例
     results = engine.extract_keywords_bm25(text, top_k)

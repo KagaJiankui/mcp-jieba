@@ -1,5 +1,6 @@
 import os
 import re
+from numpy.random import f
 import rjieba
 import numpy as np
 from typing import List, Union, Dict, Set
@@ -53,7 +54,7 @@ class JiebaEngine:
 
     def process(
         self, text: Union[str, List[str]], mode: str = "exact"
-    ) -> Dict[str, List[str]]:
+    ) -> Dict[int, List[str]]:
         """
         Process text(s) with jieba segmentation.
 
@@ -70,7 +71,7 @@ class JiebaEngine:
 
         for idx, content in enumerate(inputs):
             if not isinstance(content, str):
-                results[str(idx)] = []
+                results[idx] = []
                 continue
 
             if mode == "search":
@@ -82,11 +83,11 @@ class JiebaEngine:
 
             # Filter tokens
             filtered_tokens = [t for t in raw_tokens if self._is_valid_token(t)]
-            results[str(idx)] = filtered_tokens
+            results[idx] = filtered_tokens
 
         return results
 
-    def tag(self, text: Union[str, List[str]]) -> Dict[str, List[Dict[str, str]]]:
+    def tag(self, text: Union[str, List[str]]) -> Dict[int, Dict[str, str]]:
         """
         Process text(s) with jieba POS tagging.
 
@@ -94,26 +95,26 @@ class JiebaEngine:
             text: A single string or a list of strings.
 
         Returns:
-            A dictionary where keys are indices (as strings) and values are lists of {"word": word, "flag": flag}.
+            A dictionary where keys are indices (as strings) and values are dicts of {word : flag}.
         """
         inputs = [text] if isinstance(text, str) else text
         results = {}
 
         for idx, content in enumerate(inputs):
             if not isinstance(content, str):
-                results[str(idx)] = []
+                results[idx] = {}
                 continue
 
             # rjieba.tag returns a list of tuples [(word, flag), ...]
             tags = rjieba.tag(content)
-            # Convert to list of dicts for better JSON serialization
-            results[str(idx)] = [{t[0]: t[1]} for t in tags]
+            # Convert to dict for better JSON serialization
+            results[idx]= {f"{t[0]}": f"{t[1]}" for t in tags}
 
         return results
 
     def extract_keywords_bm25(
         self, texts: Union[str, List[str]], top_k: int = 5
-    ) -> Dict[str, List[str]]:
+    ) -> Dict[int, List[str]]:
         """
         Extract keywords from text(s) using BM25-adpt (Numpy implementation).
         Each input string is treated as a corpus (split into sentences).
@@ -134,7 +135,7 @@ class JiebaEngine:
 
         for idx, text in enumerate(inputs):
             if not isinstance(text, str) or not text.strip():
-                results[str(idx)] = []
+                results[idx] = []
                 continue
 
             # 1. Split into sentences to form the corpus
@@ -143,7 +144,7 @@ class JiebaEngine:
             sentences = [s.strip() for s in sentences if s.strip()]
 
             if not sentences:
-                results[str(idx)] = []
+                results[idx] = []
                 continue
 
             # 2. Tokenize sentences
@@ -169,7 +170,7 @@ class JiebaEngine:
                 docs_tokens_ids.append(token_ids)
 
             if not docs_tokens_ids:
-                results[str(idx)] = []
+                results[idx] = []
                 continue
 
             # 3. Build Numpy Matrices
@@ -199,7 +200,7 @@ class JiebaEngine:
             avgdl = doc_lens.mean() if N > 0 else 0
 
             if avgdl == 0:
-                results[str(idx)] = []
+                results[idx] = []
                 continue
 
             # BM25 Scores
@@ -242,6 +243,6 @@ class JiebaEngine:
             inv_vocab = {v: k for k, v in vocab.items()}
             top_keywords = [inv_vocab[i] for i in top_indices]
 
-            results[str(idx)] = top_keywords
+            results[idx] = top_keywords
 
         return results
