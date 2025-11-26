@@ -38,7 +38,7 @@ async def main():
                 try:
                     # Set timeout to detect blocking
                     result = await asyncio.wait_for(
-                        stdio_session.call_tool("tokenize", arguments={"text": line}),
+                        stdio_session.call_tool("extract_keywords", arguments={"text": line," top_k": 4}),
                         timeout=10.0
                     )
                     stdio_single_json = json.loads(result.content[0].text)
