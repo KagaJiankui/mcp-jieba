@@ -147,41 +147,39 @@ class JiebaEngine:
                 results[idx] = []
                 continue
 
-            # 2. Tokenize sentences
-            vocab = {}
-            next_id = 0
-
-            # We need to map tokens to indices for numpy
-            docs_tokens_ids = []
-
+            # 2. Tokenize sentences and collect tokens
+            docs_tokens = []
             for sent in sentences:
                 raw_tokens = rjieba.cut(sent)
                 tokens = [t for t in raw_tokens if self._is_valid_token(t)]
-                if not tokens:
-                    continue
+                if tokens:
+                    docs_tokens.append(tokens)
 
-                token_ids = []
-                for t in tokens:
-                    if t not in vocab:
-                        vocab[t] = next_id
-                        next_id += 1
-                    token_ids.append(vocab[t])
-
-                docs_tokens_ids.append(token_ids)
-
-            if not docs_tokens_ids:
+            if not docs_tokens:
                 results[idx] = []
                 continue
 
-            # 3. Build Numpy Matrices
-            N = len(docs_tokens_ids)
-            V = len(vocab)
+            # Vectorized vocabulary building and ID mapping
+            N = len(docs_tokens)
 
+            # Flatten tokens
+            doc_lens = [len(d) for d in docs_tokens]
+            flat_tokens = [t for d in docs_tokens for t in d]
+
+            # Use numpy unique to get unique tokens (vocab) and map all tokens to IDs
+            unique_tokens, token_ids = np.unique(flat_tokens, return_inverse=True)
+
+            # Reconstruct vocab for compatibility with later code
+            vocab = {t: i for i, t in enumerate(unique_tokens)}
+            V = len(unique_tokens)
+
+            # Create document indices for each token
+            doc_indices = np.repeat(np.arange(N), doc_lens)
+
+            # 3. Build Numpy Matrices
             # TF Matrix
             tf_matrix = np.zeros((N, V), dtype=np.float32)
-            for i, doc_ids in enumerate(docs_tokens_ids):
-                for tid in doc_ids:
-                    tf_matrix[i, tid] += 1
+            np.add.at(tf_matrix, (doc_indices, token_ids), 1)
 
             # 4. Compute BM25 Components
             # k1 = 1.5, b = 0.75 (standard defaults)
